@@ -1,9 +1,14 @@
 import torch
+import einops
+import functools
+import transformer_lens as TLens
+import torch.nn.functional as F
 
 from typing import List
 from torch import Tensor
 from jaxtyping import Float, Int
 from transformer_lens import HookedTransformer
+from utils.hook_utils import ablation_hook_fn, addition_hook_fn
 
 
 def get_tokens(
@@ -66,3 +71,68 @@ def get_all_layers_resid_acts(
     acts = acts.mean(dim=-3)
     
     return acts
+
+
+def compute_induce_score(
+    model: HookedTransformer,
+    candidate_vectors: Float[Tensor, "pos layers d_model"],
+    prompts: List[str],
+    refusal_toks: List[Int]
+) -> Float[Tensor, "pos n_layers"]:
+    scores = torch.zeros(candidate_vectors.shape[0], candidate_vectors.shape[1])
+    
+    for i in range(candidate_vectors.shape[0]):
+        for j in range(candidate_vectors.shape[1]):
+            temp_fn = functools.partial(addition_hook_fn, refusal_dir=candidate_vectors[i][j])
+            logits = model.run_with_hooks(
+                prompts,
+                return_type="logits",
+                fwd_hooks = [
+                    (TLens.utils.get_act_name("resid_post", j), temp_fn)
+                ]
+            )
+            logits = logits[:, -1, :]
+
+            induce_score = compute_refusal_metric(logits, refusal_toks)
+
+            scores[i][j] = induce_score.item()
+    return scores
+
+def compute_bypass_score(
+    model: HookedTransformer, 
+    candidate_vectors: Float[Tensor, "pos layers d_model"],
+    prompts: List[str],
+    refusal_toks: List[Int]
+) -> Float[Tensor, "pos n_layers"]:
+    scores = torch.zeros(candidate_vectors.shape[0], candidate_vectors.shape[1])
+
+    for i in range(candidate_vectors.shape[0]):
+        for j in range(candidate_vectors.shape[1]):
+            temp_fn = functools.partial(ablation_hook_fn, refusal_dir=candidate_vectors[i][j])
+            logits = model.run_with_hooks(
+                prompts,
+                return_type="logits",
+                fwd_hooks = [
+                    (TLens.utils.get_act_name("resid_post", j), temp_fn)
+                ]
+            )
+            logits = logits[:, -1, :]
+
+            induce_score = compute_refusal_metric(logits, refusal_toks)
+
+            scores[i][j] = induce_score.item()
+    return scores
+
+def compute_refusal_metric(
+    logits: Float[Tensor, "batch d_vocab"],
+    refusal_toks: List[Int]
+):
+    epsilon = 1e-8
+    probability_distribution = F.softmax(logits, dim=-1)
+
+    refusal_probs = probability_distribution[:, refusal_toks].sum(dim=-1)
+
+    nonrefusal_probs = torch.ones_like(refusal_probs) - refusal_probs
+    score = torch.log(refusal_probs + epsilon) - torch.log(nonrefusal_probs + epsilon)
+
+    return score.mean()

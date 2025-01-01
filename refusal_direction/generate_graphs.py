@@ -10,7 +10,9 @@ from transformer_lens import HookedTransformer
 
 from utils.model_utils import (
     get_tokens,
-    get_all_layers_resid_acts
+    get_all_layers_resid_acts,
+    compute_induce_score,
+    compute_bypass_score
 )
 
 MODEL_DATA = {
@@ -58,7 +60,7 @@ if __name__ == "__main__":
                                            MODEL_DATA[model_family]["chat_suffix"]
                                           )
 
-        print(harmful_train_tokens.shape, harmless_train_tokens.shape)
+        # print(harmful_train_tokens.shape, harmless_train_tokens.shape)
 
         post_instruct_pos = model.to_tokens(MODEL_DATA[model_family]["chat_suffix"]).shape[1] - 1
 
@@ -68,98 +70,24 @@ if __name__ == "__main__":
         assert (harmful_acts.shape == harmless_acts.shape), "Both activations on train set should have the same shape"
         assert (harmful_acts.shape == (model.cfg.n_layers, post_instruct_pos, model.cfg.d_model))
 
-        print(harmful_acts.shape, harmless_acts.shape)
+        candidate_vectors = harmful_acts - harmless_acts
 
-        
+        candidate_vectors = einops.rearrange(
+            candidate_vectors,
+            "layers pos d_model -> pos layers d_model"
+        )
 
+        assert(candidate_vectors.shape == (post_instruct_pos, model.cfg.n_layers, model.cfg.d_model))
 
-    
+        print("Computing induce score...")
+        induce_score = compute_induce_score(model, candidate_vectors, val_harmless_prompts, MODEL_DATA[model_family]["refusal_toks"])
+        assert (induce_score.shape == (post_instruct_pos, model.cfg.n_layers)), "Induce score tensor shapes not correct"
 
-    
+        print("Computing bypass score")
+        bypass_score = compute_bypass_score(model, candidate_vectors, val_harmful_prompts, MODEL_DATA[model_family]["refusal_toks"])
+        assert (bypass_score.shape == (post_instruct_pos, model.cfg.n_layers)), "Bypass score tensor shapes not correct"
 
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-    # with open("train_harmful_prompts.txt", "r") as harmful_file:
-    #     train_harmful_prompts = harmful_file.readlines()
-    #     # Add for val
-
-    # with open("train_harmless_prompts.txt", "r") as harmless_file:
-    #     train_harmless_prompts = harmless_file.readlines()
-    #     # Add for val
-
-    # """
-    #     1. Getting logits
-    #     --2. Concating all the tensors into [Layer, batch, seq_len, d_model]--
-    #     3. Mean over batch dim
-    #     --4. read seq_len out, so I can use in assert statement
-    #     --5. What is the post token pos, how to get it for different models? 
-    # """
-
-    # train_harmful_prompts = append_chat_template(train_harmful_prompts, "<start_of_turn>user\n{}<end_of_turn>\n<start_of_turn>model\n")
-    # train_harmless_prompts = append_chat_template(train_harmless_prompts, "<start_of_turn>user\n{}<end_of_turn>\n<start_of_turn>model\n")   
-
-    # seq_len_harmful, seq_len_harmless = None, None
-    # d_model = 2048
-    # n_layers = 18
-
-    # with CacheManager("google/gemma-2b-it", "cuda:3") as cachemanager:
-    #     cachemanager.attach_hooks()
-    
-    #     harmful_activation_cache = cachemanager.get_activations(train_harmful_prompts)
-    
-    #     harmless_activation_cache = cachemanager.get_activations(train_harmless_prompts)
-
-    #     seq_len_harmful = harmful_activation_cache['0'].shape[1]
-    #     seq_len_harmless = harmless_activation_cache['0'].shape[1]
-    
-    #     print(harmful_activation_cache['1'].shape)
-    #     print(harmless_activation_cache['1'].shape)
-
-
-    # # Cache is of shape (nLayers, batch, seq_len, d_model)
-    # harmful_activation_cache = torch.stack(list(harmful_activation_cache.values()), dim=0)
-    # harmless_activation_cache = torch.stack(list(harmless_activation_cache.values()), dim=0)
-
-    # assert harmful_activation_cache.shape == (n_layers, 128, seq_len_harmful, d_model)
-    # assert harmless_activation_cache.shape == (n_layers, 128, seq_len_harmless, d_model)
-
-    # mean_harmful_activation_cache = harmful_activation_cache.mean(dim=-3)
-    # mean_harmless_activation_cache = harmless_activation_cache.mean(dim=-3)
-
-    # post_mean_harmful_activation_cache = mean_harmful_activation_cache[:, -5:, :]
-    # post_mean_harmless_activation_cache = mean_harmless_activation_cache[:, -5:, :]
-
-    # print(f"Shape of post mean harmful activation cache is {post_mean_harmful_activation_cache.shape}")
-    # print(f"Shape of post mean harmless activation cache is {post_mean_harmless_activation_cache.shape}")
+        print(induce_score)
     
     
     
