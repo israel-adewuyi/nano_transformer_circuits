@@ -32,3 +32,37 @@ def get_tokens(
     tokens = torch.cat([tokens, suf_tokens], dim=-1)
 
     return tokens
+
+
+def get_all_layers_resid_acts(
+    model: HookedTransformer, tokens: Float[Tensor, "batch seq_len"], post_instruct_pos: Int
+) -> Float[Tensor, "n_layers pos d_model"]:
+    """
+    see - https://transformerlensorg.github.io/TransformerLens/generated/code/transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache.stack_activation
+
+    Run the model, caches the activations at each layer and each component and stack the activation for each layer, for each post instruction token position of the post residual stream. 
+
+    Args:
+        model (HookedTransformer): The transformer model used for forward pass.
+        tokens (Float[Tensor]): A tensor of tokenized inputs
+        post_instruct_pos: The index from the last pos, where the post instruction token starts
+
+    Returns:
+        Tensor: A tensor of shape (layers, post_instructin_token_positions, d_model) containing the tokenized sequences.
+    
+    """
+    _, cache = model.run_with_cache(
+        tokens
+    )
+
+    acts = cache.stack_activation(
+        activation_name = "resid_post"
+    )
+    # Shape of acts is [layers, batch, seq_len, d_model]
+    del cache 
+
+    acts = acts[:, :, -post_instruct_pos:, :]
+    # Take the mean across batches (prompts)
+    acts = acts.mean(dim=-3)
+    
+    return acts

@@ -8,7 +8,10 @@ from typing import List
 from jaxtyping import Float, Int
 from transformer_lens import HookedTransformer
 
-from utils.model_utils import get_tokens
+from utils.model_utils import (
+    get_tokens,
+    get_all_layers_resid_acts
+)
 
 MODEL_DATA = {
     "google" : {
@@ -56,6 +59,16 @@ if __name__ == "__main__":
                                           )
 
         print(harmful_train_tokens.shape, harmless_train_tokens.shape)
+
+        post_instruct_pos = model.to_tokens(MODEL_DATA[model_family]["chat_suffix"]).shape[1] - 1
+
+        harmful_acts = get_all_layers_resid_acts(model, harmful_train_tokens, post_instruct_pos)
+        harmless_acts = get_all_layers_resid_acts(model, harmless_train_tokens, post_instruct_pos)
+
+        assert (harmful_acts.shape == harmless_acts.shape), "Both activations on train set should have the same shape"
+        assert (harmful_acts.shape == (model.cfg.n_layers, post_instruct_pos, model.cfg.d_model))
+
+        print(harmful_acts.shape, harmless_acts.shape)
 
         
 
