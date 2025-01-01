@@ -6,6 +6,22 @@ import plotly.graph_objects as go
 from torch import Tensor
 from typing import List
 from jaxtyping import Float, Int
+from transformer_lens import HookedTransformer
+
+from utils.model_utils import get_tokens
+
+MODEL_DATA = {
+    "google" : {
+        "chat_prefix" : "<start_of_turn>user\n{}",
+        "chat_suffix" : "<end_of_turn>\n<start_of_turn>model\n",
+        "refusal_toks": [235285]
+    },
+    "Qwen" : {
+        "chat_prefix" : "<start_of_turn>user\n{}",
+        "chat_suffix" : "<end_of_turn>\n<start_of_turn>model\n",
+        "refusal_toks": [40, 2121]
+    }
+}
 
 def load_dataset(dataset_type: str):
     with open(f"train_{dataset_type}_prompts.txt") as file:
@@ -22,6 +38,26 @@ if __name__ == "__main__":
     train_harmless_prompts, val_harmless_prompts = load_dataset(dataset_type="harmless")
 
     print(len(train_harmful_prompts), len(train_harmless_prompts))
+
+    for model_name in ["google/gemma-2b-it"]:
+        model_family = model_name.split('/')[0]
+        model = HookedTransformer.from_pretrained(model_name, device="cuda:2")
+
+        # Get the tokens for the train dataset
+        harmful_train_tokens = get_tokens(model, 
+                                          train_harmful_prompts, 
+                                          MODEL_DATA[model_family]["chat_prefix"],
+                                          MODEL_DATA[model_family]["chat_suffix"]
+                                         )
+        harmless_train_tokens = get_tokens(model, 
+                                           train_harmless_prompts,
+                                           MODEL_DATA[model_family]["chat_prefix"],
+                                           MODEL_DATA[model_family]["chat_suffix"]
+                                          )
+
+        print(harmful_train_tokens.shape, harmless_train_tokens.shape)
+
+        
 
 
     
