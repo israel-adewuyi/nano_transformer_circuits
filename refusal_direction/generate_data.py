@@ -14,6 +14,8 @@ load_dotenv()
 
 hf_token =  os.getenv("HF_TOKEN")
 
+dataset_dir = "datasets"
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
 def load_config(config_path):
@@ -49,7 +51,7 @@ def read_alpaca_dataset():
 
 def read_harmful_dataset_list():
     # Construct the path to the JSON file in the root directory
-    dataset_file_path = os.path.join(current_dir, 'datasets.json')
+    dataset_file_path = os.path.join(current_dir, f'{dataset_dir}/datasets.json')
     
     dataset = load_config(dataset_file_path)
 
@@ -74,7 +76,7 @@ def select_train_harmful_prompts():
     selected_prompts = random.sample(LIST, 128)
     selected_prompts = [f"{prompt}\n" for prompt in selected_prompts]
 
-    with open('train_harmful_prompts.txt', 'w') as file:
+    with open(f'{dataset_dir}/train_harmful_prompts.txt', 'w') as file:
         file.writelines(selected_prompts)
 
 
@@ -89,7 +91,7 @@ def select_val_harmful_prompts():
 
     selected_prompts = [f"{prompt}\n" for prompt in selected_prompts]
 
-    with open("val_harmful_prompts.txt", "w") as file:
+    with open(f"{dataset_dir}/val_harmful_prompts.txt", "w") as file:
         file.writelines(selected_prompts)
 
 
@@ -112,13 +114,13 @@ def select_harmless_prompts():
     val_instructions = [f"{prompt}\n" for prompt in val_instructions]
     evaluation_instructions = [f"{prompt}\n" for prompt in evaluation_instructions]
 
-    with open("train_harmless_prompts.txt", "w") as file:
+    with open(f"{dataset_dir}/train_harmless_prompts.txt", "w") as file:
         file.writelines(train_instructions)
 
-    with open("val_harmless_prompts.txt", "w") as file:
+    with open(f"{dataset_dir}/val_harmless_prompts.txt", "w") as file:
         file.writelines(val_instructions)
 
-    with open("evaluation_harmless_prompts.txt", 'w') as file:
+    with open(f"{dataset_dir}/evaluation_harmless_prompts.txt", 'w') as file:
         file.writelines(evaluation_instructions)
     
 
