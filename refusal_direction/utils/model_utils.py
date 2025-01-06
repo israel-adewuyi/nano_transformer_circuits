@@ -1,3 +1,4 @@
+import json
 import torch
 import einops
 import functools
@@ -194,6 +195,33 @@ def compute_refusal_metric(
     score = torch.log(refusal_probs + epsilon) - torch.log(nonrefusal_probs + epsilon)
 
     return score.mean()
+
+def generate_responses(
+    model: HookedTransformer,
+    refusal_dir: Float[Tensor, "d_model"]
+):
+    temp_fn = functools.partial(ablation_hook_fn, refusal_dir=refusal_dir)
+    text = []
+
+    for layer in range(model.cfg.n_layers):
+        model.add_hook(f"blocks.{layer}.hook_resid_post", temp_fn)
+
+    with open(f"datasets/harmful_prompts.txt") as file:
+        prompts = file.readlines()
+
+    for prompt in prompts:
+        input_toks = model.to_tokens(prompt)
+
+        output_toks = model.generate(input_toks, max_new_tokens=50)
+        
+        output_text = model.to_string(output_toks)
+
+        text.append(output_text[0])
+
+    file_and_response = [{"prompt": prompt, "response": response} for prompt, response in zip(prompts, text)]
+
+    with open(f"artefacts/{model.cfg.model_name}_generations/output.json", 'w') as json_file:
+        json.dump(file_and_response, json_file, indent=4)
 
 
 def plot_refusal_metric(
