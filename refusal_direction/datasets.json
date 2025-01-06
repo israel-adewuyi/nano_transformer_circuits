@@ -1,5 +1,0 @@
-{
-  "dataset": {
-    "Harmful": ["walledai/TDC23-RedTeaming", "walledai/AdvBench"]
-  }
-}
